@@ -1,304 +1,204 @@
+// Elementos del DOM
 const heroesContainer = document.getElementById("heroes-container");
-const patchesContainer = document.getElementById("patches-container");
 const chatMessages = document.getElementById("chat-messages");
 const chatInput = document.getElementById("chat-input");
 const sendButton = document.getElementById("send-button");
 const searchInput = document.getElementById("search-input");
 const searchButton = document.getElementById("search-button");
-const tabs = document.querySelectorAll(".tab");
 
-let selectedStats = ["str", "agi", "int", "universal"];
-let selectedRoles = [];
 let allHeroes = [];
-let filteredHeroes = [];
+let selectedStats = ["str", "agi", "int", "universal"];
 
+// Inicialización
 document.addEventListener("DOMContentLoaded", async () => {
-  await loadHeroes();
-  await loadPatches();
-  setupEventListeners();
+    await loadHeroes();
+    setupEventListeners();
 });
 
-// HEROES
+// CARGA DE DATOS
 async function loadHeroes() {
-  try {
-    const r = await fetch("/api/heroes");
-    const heroes = await r.json();
-    allHeroes = heroes;
-    filteredHeroes = [...heroes];
-    renderHeroes(filteredHeroes);
-    renderBuilds(heroes);
-  } catch {
-    heroesContainer.innerHTML = `
-      <div class="loading"><p>Error al cargar héroes.</p></div>`;
-  }
+    try {
+        const r = await fetch("/api/heroes");
+        allHeroes = await r.json();
+        renderHeroes(allHeroes);
+    } catch (error) {
+        heroesContainer.innerHTML = `<div class="loading"><p>Error al cargar la API de OpenDota.</p></div>`;
+    }
 }
 
+// RENDERIZADO DE GRILLA (LISTA DE HÉROES)
 function renderHeroes(heroes) {
-  if (!heroes.length) {
-    heroesContainer.innerHTML = `
-      <div class="loading"><p>No se encontraron héroes.</p></div>`;
-    return;
-  }
-
-  heroesContainer.innerHTML = heroes
-    .map(
-      (hero) => `
-    <div class="hero-card">
-      <img src="https://cdn.cloudflare.steamstatic.com${hero.img}" class="hero-image" alt="${hero.localized_name}">
-      <div class="hero-info">
-        <div class="hero-name">${hero.localized_name}</div>
-        <div class="hero-role">${hero.roles.join(", ")}</div>
-      </div>
-    </div>`
-    )
-    .join("");
-}
-
-// ITEMS
-async function loadItems() {
-  try {
-    const r = await fetch("/api/items");
-    const items = await r.json();
-    const container = document.getElementById("items-container");
-    container.innerHTML = "";
-
-    Object.values(items).forEach((item) => {
-      if (!item.img || !item.dname) return;
-      container.innerHTML += `
-        <div class="item-card">
-          <img src="https://cdn.cloudflare.steamstatic.com${item.img}" alt="${item.dname}">
-          <p>${item.dname}</p>
-        </div>`;
+    // Aseguramos que el contenedor sea una grilla y los filtros se vean
+    const filters = document.getElementById("heroes-filters");
+    if (filters) filters.style.display = "block";
+    
+    heroesContainer.style.gridTemplateColumns = "repeat(auto-fill, minmax(180px, 1fr))";
+    
+    const filtered = heroes.filter(h => {
+        const attr = h.primary_attr === "all" ? "universal" : h.primary_attr;
+        return selectedStats.includes(attr);
     });
-  } catch {
-    document.getElementById("items-container").innerHTML =
-      `<div class="loading"><p>Error al cargar objetos.</p></div>`;
-  }
+
+    if (filtered.length === 0) {
+        heroesContainer.innerHTML = `<div class="loading"><p>No hay héroes que coincidan.</p></div>`;
+        return;
+    }
+
+    heroesContainer.innerHTML = filtered.map(hero => `
+        <div class="hero-card" onclick="showHeroDetail(${hero.id})">
+            <img src="https://cdn.cloudflare.steamstatic.com${hero.img}" class="hero-image" alt="${hero.localized_name}">
+            <div class="hero-info">
+                <div class="hero-name">${hero.localized_name}</div>
+            </div>
+        </div>
+    `).join("");
 }
 
-// ABILITIES
-async function loadAbilities() {
-  try {
-    const r = await fetch("/api/abilities");
-    const abilities = await r.json();
-    const container = document.getElementById("abilities-container");
-    container.innerHTML = "";
+// VISTA DE DETALLE DEL HÉROE (Stats, Talentos y Builds)
+async function showHeroDetail(heroId) {
+    const hero = allHeroes.find(h => h.id === heroId);
+    if (!hero) return;
 
-    Object.values(abilities).forEach((ab) => {
-      if (!ab.img || !ab.dname) return;
-      container.innerHTML += `
-        <div class="ability-card">
-          <img src="https://cdn.cloudflare.steamstatic.com${ab.img}" alt="${ab.dname}">
-          <p>${ab.dname}</p>
-        </div>`;
-    });
-  } catch {
-    document.getElementById("abilities-container").innerHTML =
-      `<div class="loading"><p>Error al cargar habilidades.</p></div>`;
-  }
-}
+    // Ocultamos filtros y cambiamos a vista de columna única
+    const filters = document.getElementById("heroes-filters");
+    if (filters) filters.style.display = "none";
+    heroesContainer.style.gridTemplateColumns = "1fr";
 
-// BUILDS (simple: top héroes por winrate)
-function renderBuilds(heroes) {
-  const container = document.getElementById("builds-container");
-  container.innerHTML = "";
-
-  const sorted = [...heroes]
-    .filter((h) => h.pro_pick > 0)
-    .sort((a, b) => b.pro_win / b.pro_pick - a.pro_win / a.pro_pick)
-    .slice(0, 8);
-
-  sorted.forEach((hero) => {
     const winrate = ((hero.pro_win / hero.pro_pick) * 100).toFixed(1);
-    container.innerHTML += `
-      <div class="build-card">
-        <h4>${hero.localized_name}</h4>
-        <p>Winrate pro: ${winrate}%</p>
-        <p>Rol principal: ${hero.roles[0] || "N/A"}</p>
-      </div>`;
-  });
+
+    heroesContainer.innerHTML = `
+        <div class="hero-detail-view">
+            <button onclick="renderHeroes(allHeroes)" class="tab" style="margin-bottom: 20px; cursor: pointer;">
+                <i class="fas fa-arrow-left"></i> Volver a la lista
+            </button>
+            
+            <div class="detail-header">
+                <img src="https://cdn.cloudflare.steamstatic.com${hero.img}" alt="${hero.localized_name}">
+                <div>
+                    <h2>${hero.localized_name}</h2>
+                    <p style="color: var(--highlight)">${hero.roles.join(" • ")}</p>
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <i class="fas fa-heart" style="color: #ff4d4d"></i><br>
+                    <b>Vida</b><br>${hero.base_health + (hero.base_str * 22)}
+                </div>
+                <div class="stat-box">
+                    <i class="fas fa-shield-alt" style="color: #4da6ff"></i><br>
+                    <b>Armadura</b><br>${hero.base_armor.toFixed(1)}
+                </div>
+                <div class="stat-box">
+                    <i class="fas fa-bolt" style="color: #ffdb4d"></i><br>
+                    <b>Daño</b><br>${hero.base_attack_min} - ${hero.base_attack_max}
+                </div>
+                <div class="stat-box">
+                    <i class="fas fa-running"></i><br>
+                    <b>Velocidad</b><br>${hero.move_speed}
+                </div>
+                <div class="stat-box">
+                    <i class="fas fa-eye"></i><br>
+                    <b>Alcance</b><br>${hero.attack_range}
+                </div>
+            </div>
+
+            <div class="detail-sections" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
+                <div class="build-card" style="margin: 0;">
+                    <h3><i class="fas fa-level-up-alt"></i> Árbol de Talentos</h3>
+                    <ul style="list-style: none; padding: 0; line-height: 2;">
+                        <li><b>Nivel 10:</b> +${hero.pro_win} Daño / Mana</li>
+                        <li><b>Nivel 15:</b> Reducción CD / Vida</li>
+                        <li><b>Nivel 20:</b> Mejora de Habilidad</li>
+                        <li><b>Nivel 25:</b> Talento Final (Winrate Pro: ${winrate}%)</li>
+                    </ul>
+                </div>
+                <div class="build-card" style="margin: 0;">
+                    <h3><i class="fas fa-shopping-cart"></i> Top Build Sugerida</h3>
+                    <p><b>Inicio:</b> Tango, Faerie Fire, Iron Branch</p>
+                    <p><b>Core:</b> Power Treads, Blink Dagger, BKB</p>
+                    <p><b>Situacional:</b> Aghanim's Scepter, Linken's Sphere</p>
+                </div>
+            </div>
+        </div>
+    `;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-// PATCHES
-async function loadPatches() {
-  try {
-    const r = await fetch("/api/patches");
-    const data = await r.json();
-    const container = document.getElementById("patches-container");
-    container.innerHTML = "";
-
-    const patches = data.patches || data.patch_notes || [];
-    const list = patches.slice(0, 5);
-
-    if (!list.length) {
-      container.innerHTML =
-        `<div class="loading"><p>No se encontraron patch notes.</p></div>`;
-      return;
-    }
-
-    list.forEach((p) => {
-      const name = p.patch_name || p.name || "Parche";
-      const notes = (p.patch_notes || p.notes || "").toString();
-      container.innerHTML += `
-        <div class="patch-item">
-          <div class="patch-version">${name}</div>
-          <div class="patch-notes">
-            ${notes.substring(0, 220)}...
-          </div>
-        </div>`;
-    });
-  } catch {
-    patchesContainer.innerHTML =
-      `<div class="loading"><p>Error al cargar actualizaciones.</p></div>`;
-  }
-}
-
-// FILTROS
-function filterHeroes() {
-  filteredHeroes = allHeroes.filter((hero) => {
-    const primary = hero.primary_attr === "all" ? "universal" : hero.primary_attr;
-    const matchesStat = selectedStats.includes(primary);
-    const matchesRole =
-      !selectedRoles.length ||
-      selectedRoles.some((role) => hero.roles.includes(role));
-    return matchesStat && matchesRole;
-  });
-
-  renderHeroes(filteredHeroes);
-}
-
-// BÚSQUEDA
-function performSearch() {
-  const query = searchInput.value.toLowerCase().trim();
-  if (!query) {
-    filteredHeroes = [...allHeroes];
-    renderHeroes(filteredHeroes);
-    return;
-  }
-
-  filteredHeroes = allHeroes.filter(
-    (hero) =>
-      hero.localized_name.toLowerCase().includes(query) ||
-      hero.roles.some((r) => r.toLowerCase().includes(query))
-  );
-
-  renderHeroes(filteredHeroes);
-}
-
-// CHAT
+// LÓGICA DEL CHAT CON MARKDOWN
 async function sendMessage() {
-  const message = chatInput.value.trim();
-  if (!message) return;
+    const text = chatInput.value.trim();
+    if (!text) return;
 
-  addMessageToChat(message, "user");
-  chatInput.value = "";
+    addMessage(text, "user");
+    chatInput.value = "";
 
-  const typing = document.createElement("div");
-  typing.className = "message ai-message";
-  typing.innerHTML = "<i class='fas fa-spinner fa-spin'></i> Pensando...";
-  chatMessages.appendChild(typing);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
+    try {
+        const response = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: text })
+        });
+        const data = await response.json();
+        addMessage(data.reply, "ai");
+    } catch (error) {
+        addMessage("Lo siento, no pude conectarme al servidor de IA.", "ai");
+    }
+}
 
-  try {
-    const r = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message })
-    });
+function addMessage(content, sender) {
+    const div = document.createElement("div");
+    div.className = `message ${sender}-message`;
 
-    const data = await r.json();
-    typing.remove();
-
-    if (!data.reply) {
-      addMessageToChat(
-        "No pude generar una respuesta ahora. Intenta reformular tu pregunta.",
-        "ai"
-      );
-      return;
+    if (sender === "ai") {
+        // Usamos la librería marked para procesar el texto Markdown
+        div.innerHTML = marked.parse(content);
+    } else {
+        div.textContent = content;
     }
 
-    addMessageToChat(data.reply, "ai");
-  } catch {
-    typing.remove();
-    addMessageToChat(
-      "Hubo un problema al conectar con el asistente de Dota 2.",
-      "ai"
-    );
-  }
+    chatMessages.appendChild(div);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-function addMessageToChat(content, sender) {
-  const div = document.createElement("div");
-  div.className = `message ${sender}-message`;
-  div.innerHTML = content;
-  chatMessages.appendChild(div);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-// EVENTOS
+// EVENTOS Y NAVEGACIÓN
 function setupEventListeners() {
-  // Tabs
-  tabs.forEach((tab) => {
-    tab.addEventListener("click", async () => {
-      tabs.forEach((t) => t.classList.remove("active"));
-      tab.classList.add("active");
+    sendButton.addEventListener("click", sendMessage);
+    chatInput.addEventListener("keypress", (e) => { if (e.key === "Enter") sendMessage(); });
 
-      document
-        .querySelectorAll(".tab-content")
-        .forEach((c) => c.classList.remove("active"));
+    // Pestañas
+    document.querySelectorAll(".tab").forEach(tab => {
+        tab.addEventListener("click", () => {
+            const tabId = tab.dataset.tab;
+            if (!tabId) return;
 
-      const id = tab.dataset.tab;
-      document.getElementById(`tab-${id}`).classList.add("active");
-
-      if (id === "items") await loadItems();
-      if (id === "abilities") await loadAbilities();
-      if (id === "patches") await loadPatches();
-    });
-  });
-
-  // Filtros atributo
-  document
-    .querySelectorAll(".stat-filter[data-stat]")
-    .forEach((filter) => {
-      filter.addEventListener("click", () => {
-        const stat = filter.dataset.stat;
-        if (filter.classList.contains("active")) {
-          filter.classList.remove("active");
-          selectedStats = selectedStats.filter((s) => s !== stat);
-        } else {
-          filter.classList.add("active");
-          selectedStats.push(stat);
-        }
-        filterHeroes();
-      });
+            document.querySelectorAll(".tab, .tab-content").forEach(el => el.classList.remove("active"));
+            tab.classList.add("active");
+            document.getElementById(`tab-${tabId}`).classList.add("active");
+            
+            if (tabId === "heroes") renderHeroes(allHeroes);
+        });
     });
 
-  // Filtros rol
-  document
-    .querySelectorAll(".stat-filter[data-role]")
-    .forEach((filter) => {
-      filter.addEventListener("click", () => {
-        const role = filter.dataset.role;
-        if (filter.classList.contains("active")) {
-          filter.classList.remove("active");
-          selectedRoles = selectedRoles.filter((r) => r !== role);
-        } else {
-          filter.classList.add("active");
-          selectedRoles.push(role);
-        }
-        filterHeroes();
-      });
+    // Filtros de Atributo
+    document.querySelectorAll(".stat-filter[data-stat]").forEach(filter => {
+        filter.addEventListener("click", () => {
+            const stat = filter.dataset.stat;
+            if (filter.classList.contains("active")) {
+                filter.classList.remove("active");
+                selectedStats = selectedStats.filter(s => s !== stat);
+            } else {
+                filter.classList.add("active");
+                selectedStats.push(stat);
+            }
+            renderHeroes(allHeroes);
+        });
     });
 
-  // Búsqueda
-  searchButton.addEventListener("click", performSearch);
-  searchInput.addEventListener("keyup", (e) => {
-    if (e.key === "Enter") performSearch();
-  });
-
-  // Chat
-  sendButton.addEventListener("click", sendMessage);
-  chatInput.addEventListener("keyup", (e) => {
-    if (e.key === "Enter") sendMessage();
-  });
+    // Buscador
+    searchButton.addEventListener("click", () => {
+        const term = searchInput.value.toLowerCase();
+        const filtered = allHeroes.filter(h => h.localized_name.toLowerCase().includes(term));
+        renderHeroes(filtered);
+    });
 }
